@@ -1,4 +1,4 @@
-# 2021_S2_Huw_FYP
+# SRP_2021_Social_Navigation
 
 This project focussed on developing a detection and tracking pipeline to detect pedestrians near the Jackal robot. The CADRL navigation algorithm developed by MIT was tested in simulation and onboard the robot.
 
@@ -36,4 +36,3 @@ DepthAI is the interface used for communicating with the OAK-D cameras.
 I had to make some minor modifications to the [cadrl_node.py](https://github.com/mit-acl/cadrl_ros/blob/master/scripts/cadrl_node.py) file in cadrl_ros repo. 
 * Value_net had been commented out (line 49) but there were still references to that variable in the code so I commented out all references (setting the if statement to be always false at line 182 works)
 * Removed None from Line 391 as predict_p function had too many arguments: predictions = self.nn.predict_p(obs, None)[0]
-
