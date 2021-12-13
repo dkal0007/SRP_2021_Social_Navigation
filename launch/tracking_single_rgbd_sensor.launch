@@ -1,0 +1,71 @@
+<launch>
+    <!-- Launch file arguments -->
+    <arg name="visualization" default="false"/> <!-- start Rviz with predefined configuration? -->
+    <arg name="dummy_transforms" default="false"/> <!-- publish TF transform for sensor to groundplane -->
+    <arg name="lasers" default="false"/> <!-- Choose whether to use laser detector-->
+    <arg name="leg_detector" default="true"/> <!-- Choose whether to use upper body or leg laser detector-->
+    <arg name="oak_detectors" default="false"/> <!-- Choose whether to use oak-d cameras for detections-->
+
+
+    <!-- TF frame IDs used by some detectors, and tracking components -->
+    <arg name="base_footprint_frame_id" default="base_link"/>  <!-- name of the robot's base frame after projection onto the ground plane -->
+    <arg name="world_frame_id" default="odom"/>  <!-- this is the fixed tracking frame -->
+
+    <!--Launch rosbridge to enable detections from OAK-D devices-->
+    <!--include file="$(find rosbridge_server)/launch/rosbridge_websocket.launch"/-->
+
+    <!--Launch OAK-d camera detectors-->
+    <include file="$(find development)/launch/launch_oak_detectors.launch" if="$(arg oak_detectors)"/>
+
+    <!-- Launch laser detector-->
+    <group if="$(arg lasers)">
+    <include file="$(find srl_laser_detectors)/launch/learned_detector_with_segmentation.launch" ns="/spencer/perception_internal/people_detection/laser_front" unless="$(arg leg_detector)">
+        <arg name="model_prefix" default="lms500_0.25deg_height70cm_fr_rathausgasse"/>
+        <arg name="type" value="random_forest"/>
+        <arg name="detected_persons" value="/spencer/perception_internal/detected_persons/laser_front"/>
+        <arg name="laser" value="/scan"/>
+        <arg name="max_avg_distance_from_sensor" default="15"/>
+        <arg name="detection_id_offset" value="1"/>
+        <arg name="detection_id_increment" default="1"/>
+        <arg name="pose_variance" value="0.1"/> <!-- affects gain of Kalman filter! may be overriden in nnt.launch! -->
+    </include>
+
+    <include file="$(find spencer_leg_detector_wrapper)/launch/leg_detector.launch" if="$(arg leg_detector)">
+        <!-- May need to change the subscribed topic for leg to person (to avoid double measurement)-->
+        <arg name="scan"  value="/scan"/>
+        <arg name="detected_persons" default="/spencer/perception_internal/detected_persons/laser_front"/> 
+        <arg name="config_file" value="huw.yaml"/>
+    </include>
+    </group>
+
+    <!-- Set up dummy transforms into an imaginary robot and odom frame -->
+    <group if="$(arg dummy_transforms)">
+        <include file="$(find development)/launch/dummy_oak_transforms.launch">
+            <arg name="base_footprint_frame_id" value="$(arg base_footprint_frame_id)"/>
+        </include>
+    </group>
+
+
+    <!-- People tracking -->
+    <include file="$(find development)/launch/freiburg_people_tracking.launch">
+        <arg name="rgbd" value="$(arg oak_detectors)"/>
+        <arg name="laser_low_confidence_detections" default="false"/>
+        <arg name="base_footprint_frame_id" value="$(arg base_footprint_frame_id)"/>
+        <arg name="world_frame_id" value="$(arg world_frame_id)"/>
+    </include>
+
+    <!-- As there is not yet any high-recall/low-confidence detector for RGB-D, and we are not using laser, tracks may get deleted too quickly in case of missed detections.
+         To deal with this, for the moment, we increase the maximum number of occluded frames to be  a bit more tolerant towards missed detections.
+         This works fine in uncrowded environments which are not very dynamic. -->
+    <group unless="$(arg lasers)">
+        <rosparam param="/spencer/perception_internal/people_tracking/srl_nearest_neighbor_tracker/max_occlusions_before_deletion">15</rosparam>
+        <rosparam param="/spencer/perception_internal/people_tracking/srl_nearest_neighbor_tracker/max_occlusions_before_deletion_of_mature_track">50</rosparam>
+        <rosparam param="/spencer/perception_internal/people_tracking/srl_nearest_neighbor_tracker/max_gating_distance">1.0</rosparam>    
+    </group>
+    <!-- Group tracking -->
+    <!--include file="$(find spencer_people_tracking_launch)/launch/tracking/group_tracking.launch"/--> 
+
+    <!-- RViz visualization -->
+    <node name="tracking_visualization_rviz" pkg="rviz" type="rviz" args="-d $(find development)/rviz/single_camera_detections.rviz" if="$(arg visualization)"/>
+
+</launch>

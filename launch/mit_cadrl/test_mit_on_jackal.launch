@@ -1,0 +1,66 @@
+<launch>
+	<arg name="jackal_speed" default="1.2"/>
+    <arg name="cartographer" default="false"/>
+    <arg name="lasers" default="true"/>
+    <arg name="launch_detectors" default="false"/>
+    <arg name="safety_stop" default="false"/>
+
+    <!-- Launch jackal detection pipeline-->
+    <include file="$(find development)/launch/tracking_single_rgbd_sensor.launch" if="$(arg launch_detectors)">
+        <arg name="visualization" value="false" />
+        <arg name="lasers" value="$(arg lasers)" />
+        <arg name="leg_detector" value="true" />
+    </include>
+
+    <!-- Sets map frame = odom, default true as not set elsewhere-->
+    <node name="tf_map_odom_dummy" pkg="tf" type="static_transform_publisher" args="0 0 0 0 0 0 map odom 10" unless="$(arg cartographer)"/>
+
+    <!-- Includes google cartographer -->
+    <include file="$(find jackal_cartographer_navigation)/launch/cartographer_demo.launch" if="$(arg cartographer)"/>
+
+    <!-- Launch neural net ros wrapper for cadrl predictions-->
+    <node pkg="cadrl_ros" type="cadrl_node.py" name="cadrl_node" output="screen" required="true" ns="mit_cadrl">
+        
+        <!-- Publications -->
+        <remap from="~other_vels" to="other_vels"/>
+        <remap from="~nn_cmd_vel" to="cmd_vel"/>
+        <remap from="~pose_marker" to="pose_marker"/>
+        <remap from="~path_marker" to="path_marker"/>
+        <remap from="~goal_path_marker" to="goal_path_marker"/>
+        <remap from="~agent_marker" to="other_agents_marker"/>
+        <remap from="~agent_markers" to="other_agents_markers"/>
+        
+        <!-- Subscriptions -->
+        <remap from="~pose" to="pose"/>
+        <remap from="~velocity" to="velocity"/>
+        <remap from="~safe_actions" to="local_path_finder/safe_actions"/>
+        <remap from="~planner_mode" to="planner_fsm/mode"/>
+        <remap from="~goal" to="move_base_simple/goal"/>
+        <remap from="~clusters" to="cluster/output/clusters"/>
+        <remap from="~peds" to="/ped_traj"/>
+        
+        <!-- Parameters -->
+        <param name="~jackal_speed" value="$(arg jackal_speed)"/>
+
+    </node>
+
+    <node pkg="development" type="mit_spencer_helper.py" name="mit_helper" required="true">
+        
+        <!-- Publications -->
+        <remap from="~pose" to="mit_cadrl/pose"/>
+        <remap from="~velocity" to="mit_cadrl/velocity"/>
+        <remap from="~pedtraj" to="mit_cadrl/cluster/output/clusters"/>
+        
+        <!-- Subscriptions -->
+        <remap from="~odom" to="/odometry/filtered"/>
+        <remap from="~peds" to="/spencer/perception/tracked_persons"/>
+    
+    </node>
+
+    <node name="mit_cadrl_cmd_vel_relay" pkg="topic_tools" type="relay" args="mit_cadrl/cmd_vel cmd_vel" unless="$(arg safety_stop)" />
+    <node name="mit_cadrl_cmd_vel_relay" pkg="development" type="collision_avoidance.py" if="$(arg safety_stop)" />
+
+
+
+
+</launch>
